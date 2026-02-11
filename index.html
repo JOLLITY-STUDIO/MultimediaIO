@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片转 SVG - MultimediaIO</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎨 图片转 SVG</h1>
+            <p>将任意图片转换为矢量 SVG 格式</p>
+        </header>
+
+        <main>
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-content">
+                    <div class="upload-icon">📷</div>
+                    <p class="upload-text">点击或拖拽图片到此处</p>
+                    <p class="upload-hint">支持 PNG、JPG、JPEG、GIF、BMP 格式</p>
+                    <input type="file" id="fileInput" accept="image/*" hidden>
+                </div>
+            </div>
+
+            <div class="preview-area" id="previewArea" style="display: none;">
+                <div class="preview-panel">
+                    <h3>原始图片</h3>
+                    <div class="preview-box">
+                        <img id="originalImage" alt="原始图片">
+                    </div>
+                </div>
+                <div class="preview-panel">
+                    <h3>SVG 预览</h3>
+                    <div class="preview-box" id="svgPreview"></div>
+                </div>
+            </div>
+
+            <div class="controls" id="controls" style="display: none;">
+                <div class="control-group">
+                    <label for="colorThreshold">颜色阈值:</label>
+                    <input type="range" id="colorThreshold" min="1" max="50" value="10">
+                    <span id="colorThresholdValue">10</span>
+                </div>
+                <div class="control-group">
+                    <label for="blurRadius">模糊半径:</label>
+                    <input type="range" id="blurRadius" min="0" max="10" value="0">
+                    <span id="blurRadiusValue">0</span>
+                </div>
+                <div class="control-group">
+                    <label for="simplifyTolerance">简化容差:</label>
+                    <input type="range" id="simplifyTolerance" min="0" max="10" value="2">
+                    <span id="simplifyToleranceValue">2</span>
+                </div>
+                <div class="button-group">
+                    <button id="convertBtn" class="btn btn-primary">转换为 SVG</button>
+                    <button id="downloadBtn" class="btn btn-success" style="display: none;">下载 SVG</button>
+                    <button id="resetBtn" class="btn btn-secondary">重置</button>
+                </div>
+            </div>
+
+            <div class="loading" id="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>正在转换中...</p>
+            </div>
+        </main>
+
+        <footer>
+            <p>Powered by JOLLITY STUDIO | <a href="https://github.com/JOLLITY-STUDIO/MultimediaIO" target="_blank">GitHub</a></p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
