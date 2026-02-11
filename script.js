@@ -129,14 +129,13 @@ class ImageToSVGConverter {
         if (!this.originalImage) return;
 
         this.loading.style.display = 'block';
-        this.convertBtn.disabled = true;
 
         const img = new Image();
         img.onload = () => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             
-            const maxSize = 800;
+            const maxSize = 600;
             let width = img.width;
             let height = img.height;
             
@@ -155,175 +154,213 @@ class ImageToSVGConverter {
             ctx.drawImage(img, 0, 0, width, height);
 
             const imageData = ctx.getImageData(0, 0, width, height);
-            
-            if (this.invert.checked) {
-                for (let i = 0; i < imageData.data.length; i += 4) {
-                    imageData.data[i] = 255 - imageData.data[i];
-                    imageData.data[i + 1] = 255 - imageData.data[i + 1];
-                    imageData.data[i + 2] = 255 - imageData.data[i + 2];
-                }
-            }
+            const thresholdVal = parseInt(this.threshold.value);
+            const turdSize = parseInt(this.turdsize.value);
+            const invertColors = this.invert.checked;
 
-            const options = {
-                threshold: parseInt(this.threshold.value),
-                turnPolicy: this.turnpolicy.value,
-                turdSize: parseInt(this.turdsize.value),
-                alphaMax: parseFloat(this.alphamax.value) / 100,
-                optCurve: this.optcurve.checked,
-                optTolerance: 0.2,
-                background: '#ffffff',
-                color: '#000000'
-            };
+            const binaryImage = this.binarizeImage(imageData, thresholdVal, invertColors);
+            const contours = this.findContours(binaryImage, width, height, turdSize);
+            const svg = this.contoursToSVG(contours, width, height);
 
-            try {
-                if (typeof Potrace !== 'undefined') {
-                    Potrace.trace(imageData, options, (err, svg) => {
-                        if (err) {
-                            console.error('Potrace error:', err);
-                            this.convertToSVGCanvas(ctx, canvas, width, height);
-                            return;
-                        }
-                        this.svgData = svg;
-                        this.displaySVG(svg);
-                        this.loading.style.display = 'none';
-                        this.convertBtn.disabled = false;
-                        this.downloadBtn.style.display = 'inline-block';
-                    });
-                } else {
-                    this.convertToSVGCanvas(ctx, canvas, width, height);
-                }
-            } catch (error) {
-                console.error('Conversion error:', error);
-                this.convertToSVGCanvas(ctx, canvas, width, height);
-            }
+            this.svgData = svg;
+            this.displaySVG(svg);
+            this.loading.style.display = 'none';
+            this.downloadBtn.style.display = 'inline-block';
         };
         img.src = this.originalImage;
     }
 
-    convertToSVGCanvas(ctx, canvas, width, height) {
-        const imageData = ctx.getImageData(0, 0, width, height);
+    binarizeImage(imageData, threshold, invert) {
         const data = imageData.data;
-        
-        const edgePoints = this.detectEdges(data, width, height);
-        const paths = this.tracePaths(edgePoints, width, height);
-        
-        let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">\n`;
-        svg += '  <rect width="100%" height="100%" fill="white"/>\n';
-        
-        for (const path of paths) {
-            if (path.length > 2) {
-                const simplified = this.simplifyPath(path, 1);
-                const d = this.pathToSVG(simplified);
-                svg += `  <path d="${d}" fill="black" stroke="none"/>\n`;
-            }
+        const binary = new Uint8Array(data.length / 4);
+
+        for (let i = 0; i < data.length; i += 4) {
+            const gray = (data[i] * 299 + data[i + 1] * 587 + data[i + 2] * 114) / 1000;
+            const alpha = data[i + 3];
+            let value = gray < threshold ? 1 : 0;
+            if (invert) value = 1 - value;
+            if (alpha < 128) value = 0;
+            binary[i / 4] = value;
         }
-        
-        svg += '</svg>';
-        
-        this.svgData = svg;
-        this.displaySVG(svg);
-        this.loading.style.display = 'none';
-        this.convertBtn.disabled = false;
-        this.downloadBtn.style.display = 'inline-block';
+
+        return binary;
     }
 
-    detectEdges(data, width, height) {
-        const edges = new Set();
-        const threshold = parseInt(this.threshold.value);
-        
-        for (let y = 1; y < height - 1; y++) {
-            for (let x = 1; x < width - 1; x++) {
-                const i = (y * width + x) * 4;
-                const gray = (data[i] + data[i + 1] + data[i + 2]) / 3;
-                
-                const right = ((y * width + x + 1) * 4);
-                const grayRight = (data[right] + data[right + 1] + data[right + 2]) / 3;
-                
-                const bottom = (((y + 1) * width + x) * 4);
-                const grayBottom = (data[bottom] + data[bottom + 1] + data[bottom + 2]) / 3;
-                
-                if (Math.abs(gray - grayRight) > threshold || Math.abs(gray - grayBottom) > threshold) {
-                    if (gray < threshold) {
-                        edges.add(`${x},${y}`);
-                    }
-                }
-            }
-        }
-        
-        return edges;
-    }
-
-    tracePaths(edges, width, height) {
-        const paths = [];
+    findContours(binary, width, height, minArea) {
+        const contours = [];
         const visited = new Set();
-        const directions = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]];
-        
+        const directions = [[0, 1], [1, 0], [0, -1], [-1, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]];
+
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
+                const idx = y * width + x;
                 const key = `${x},${y}`;
-                if (edges.has(key) && !visited.has(key)) {
-                    const path = [];
+                
+                if (binary[idx] === 1 && !visited.has(key)) {
+                    const region = [];
                     const stack = [{ x, y }];
-                    
+                    let minX = x, maxX = x, minY = y, maxY = y;
+
                     while (stack.length > 0) {
                         const p = stack.pop();
                         const pKey = `${p.x},${p.y}`;
+                        
                         if (visited.has(pKey)) continue;
-                        if (!edges.has(pKey)) continue;
+                        if (p.x < 0 || p.x >= width || p.y < 0 || p.y >= height) continue;
                         
+                        const pIdx = p.y * width + p.x;
+                        if (binary[pIdx] !== 1) continue;
+
                         visited.add(pKey);
-                        path.push({ x: p.x, y: p.y });
+                        region.push({ x: p.x, y: p.y });
                         
+                        minX = Math.min(minX, p.x);
+                        maxX = Math.max(maxX, p.x);
+                        minY = Math.min(minY, p.y);
+                        maxY = Math.max(maxY, p.y);
+
                         for (const [dx, dy] of directions) {
-                            const nx = p.x + dx;
-                            const ny = p.y + dy;
-                            const nKey = `${nx},${ny}`;
-                            if (!visited.has(nKey) && edges.has(nKey)) {
-                                stack.push({ x: nx, y: ny });
-                            }
+                            stack.push({ x: p.x + dx, y: p.y + dy });
                         }
                     }
-                    
-                    if (path.length > 5) {
-                        paths.push(path);
+
+                    const area = region.length;
+                    if (area >= minArea) {
+                        const contour = this.traceContour(region, binary, width, height, minX, maxX, minY, maxY);
+                        if (contour.length >= 3) {
+                            contours.push(contour);
+                        }
                     }
                 }
             }
         }
-        
-        return paths;
+
+        return contours.sort((a, b) => b.length - a.length);
     }
 
-    simplifyPath(points, tolerance) {
-        if (points.length <= 3) return points;
+    traceContour(region, binary, width, height, minX, maxX, minY, maxY) {
+        const regionSet = new Set(region.map(p => `${p.x},${p.y}`));
+        const edgeDirections = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+        
+        let startPoint = null;
+        for (const p of region) {
+            if (p.y === minY || p.x === minX) {
+                startPoint = p;
+                break;
+            }
+        }
+        
+        if (!startPoint) return [];
 
-        const result = [points[0]];
-        let prev = points[0];
+        const contour = [startPoint];
+        let current = startPoint;
+        let dir = 0;
+        let iterations = 0;
+        const maxIterations = region.length * 4;
 
-        for (let i = 1; i < points.length - 1; i++) {
+        do {
+            let found = false;
+            for (let i = 0; i < 8 && !found; i++) {
+                const testDir = (dir + i + 6) % 8;
+                const [dx, dy] = edgeDirections[testDir];
+                const next = { x: current.x + dx, y: current.y + dy };
+                const nextKey = `${next.x},${next.y}`;
+
+                if (regionSet.has(nextKey)) {
+                    const isEdge = this.isEdgePoint(next, binary, width, height);
+                    if (isEdge) {
+                        contour.push(next);
+                        current = next;
+                        dir = testDir;
+                        found = true;
+                    }
+                }
+            }
+            iterations++;
+        } while (iterations < maxIterations && 
+                 (current.x !== startPoint.x || current.y !== startPoint.y || contour.length < 3) &&
+                 contour.length < region.length);
+
+        return this.simplifyContour(contour, parseFloat(this.alphamax.value) / 100);
+    }
+
+    isEdgePoint(p, binary, width, height) {
+        const directions = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+        for (const [dx, dy] of directions) {
+            const nx = p.x + dx;
+            const ny = p.y + dy;
+            if (nx < 0 || nx >= width || ny < 0 || ny >= height) return true;
+            const nIdx = ny * width + nx;
+            if (binary[nIdx] === 0) return true;
+        }
+        return false;
+    }
+
+    simplifyContour(contour, tolerance) {
+        if (contour.length <= 10) return contour;
+
+        const simplified = [contour[0]];
+        let prev = contour[0];
+        const minDist = Math.max(1, Math.floor(contour.length / 50));
+
+        for (let i = 1; i < contour.length - 1; i++) {
             const dist = Math.sqrt(
-                Math.pow(points[i].x - prev.x, 2) +
-                Math.pow(points[i].y - prev.y, 2)
+                Math.pow(contour[i].x - prev.x, 2) +
+                Math.pow(contour[i].y - prev.y, 2)
             );
-            if (dist >= tolerance) {
-                result.push(points[i]);
-                prev = points[i];
+            if (dist >= minDist) {
+                simplified.push(contour[i]);
+                prev = contour[i];
             }
         }
 
-        result.push(points[points.length - 1]);
-        return result;
+        simplified.push(contour[contour.length - 1]);
+        return simplified;
     }
 
-    pathToSVG(points) {
-        if (points.length < 2) return '';
-        
-        let d = `M ${points[0].x} ${points[0].y}`;
-        
-        for (let i = 1; i < points.length; i++) {
-            d += ` L ${points[i].x} ${points[i].y}`;
+    contoursToSVG(contours, width, height) {
+        let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">\n`;
+        svg += '  <rect width="100%" height="100%" fill="white"/>\n';
+
+        for (const contour of contours) {
+            if (contour.length < 3) continue;
+
+            const path = this.contourToPath(contour);
+            svg += `  <path d="${path}" fill="black" stroke="none"/>\n`;
         }
+
+        svg += '</svg>';
+        return svg;
+    }
+
+    contourToPath(contour) {
+        if (contour.length < 2) return '';
+
+        let d = `M ${contour[0].x} ${contour[0].y}`;
         
+        if (this.optcurve.checked && contour.length > 4) {
+            for (let i = 1; i < contour.length - 1; i += 2) {
+                const p0 = contour[i - 1];
+                const p1 = contour[i];
+                const p2 = contour[Math.min(i + 1, contour.length - 1)];
+                
+                const c1 = {
+                    x: (p0.x + p1.x) / 2,
+                    y: (p0.y + p1.y) / 2
+                };
+                const c2 = {
+                    x: (p1.x + p2.x) / 2,
+                    y: (p1.y + p2.y) / 2
+                };
+                
+                d += ` Q ${p1.x} ${p1.y} ${c2.x} ${c2.y}`;
+            }
+        } else {
+            for (let i = 1; i < contour.length; i++) {
+                d += ` L ${contour[i].x} ${contour[i].y}`;
+            }
+        }
+
         d += ' Z';
         return d;
     }
