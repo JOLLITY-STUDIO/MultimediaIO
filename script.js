@@ -135,7 +135,7 @@ class ImageToSVGConverter {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             
-            const maxSize = 600;
+            const maxSize = 800;
             let width = img.width;
             let height = img.height;
             
@@ -159,8 +159,8 @@ class ImageToSVGConverter {
             const invertColors = this.invert.checked;
 
             const binaryImage = this.binarizeImage(imageData, thresholdVal, invertColors);
-            const contours = this.findContours(binaryImage, width, height, turdSize);
-            const svg = this.contoursToSVG(contours, width, height);
+            const contours = this.findContoursWithHoles(binaryImage, width, height, turdSize);
+            const svg = this.contoursToSVGWithFillRule(contours, width, height);
 
             this.svgData = svg;
             this.displaySVG(svg);
@@ -186,7 +186,7 @@ class ImageToSVGConverter {
         return binary;
     }
 
-    findContours(binary, width, height, minArea) {
+    findContoursWithHoles(binary, width, height, minArea) {
         const contours = [];
         const visited = new Set();
         const directions = [[0, 1], [1, 0], [0, -1], [-1, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]];
@@ -199,7 +199,6 @@ class ImageToSVGConverter {
                 if (binary[idx] === 1 && !visited.has(key)) {
                     const region = [];
                     const stack = [{ x, y }];
-                    let minX = x, maxX = x, minY = y, maxY = y;
 
                     while (stack.length > 0) {
                         const p = stack.pop();
@@ -213,40 +212,105 @@ class ImageToSVGConverter {
 
                         visited.add(pKey);
                         region.push({ x: p.x, y: p.y });
-                        
-                        minX = Math.min(minX, p.x);
-                        maxX = Math.max(maxX, p.x);
-                        minY = Math.min(minY, p.y);
-                        maxY = Math.max(maxY, p.y);
 
                         for (const [dx, dy] of directions) {
                             stack.push({ x: p.x + dx, y: p.y + dy });
                         }
                     }
 
-                    const area = region.length;
-                    if (area >= minArea) {
-                        const contour = this.traceContour(region, binary, width, height, minX, maxX, minY, maxY);
-                        if (contour.length >= 3) {
-                            contours.push(contour);
+                    if (region.length >= minArea) {
+                        const outerContour = this.traceOuterContour(region, binary, width, height);
+                        const holes = this.findHolesInRegion(region, binary, width, height, minArea);
+                        
+                        if (outerContour.length >= 3) {
+                            contours.push({
+                                outer: outerContour,
+                                holes: holes
+                            });
                         }
                     }
                 }
             }
         }
 
-        return contours.sort((a, b) => b.length - a.length);
+        return contours.sort((a, b) => b.outer.length - a.outer.length);
     }
 
-    traceContour(region, binary, width, height, minX, maxX, minY, maxY) {
+    findHolesInRegion(region, binary, width, height, minArea) {
+        const holes = [];
         const regionSet = new Set(region.map(p => `${p.x},${p.y}`));
-        const edgeDirections = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+        const visited = new Set();
+        const directions = [[0, 1], [1, 0], [0, -1], [-1, 0]];
+
+        let minX = width, maxX = 0, minY = height, maxY = 0;
+        for (const p of region) {
+            minX = Math.min(minX, p.x);
+            maxX = Math.max(maxX, p.x);
+            minY = Math.min(minY, p.y);
+            maxY = Math.max(maxY, p.y);
+        }
+
+        const holeVisited = new Set();
+        
+        for (let y = minY; y <= maxY; y++) {
+            for (let x = minX; x <= maxX; x++) {
+                const key = `${x},${y}`;
+                const idx = y * width + x;
+                
+                if (binary[idx] === 0 && !holeVisited.has(key) && regionSet.has(key)) {
+                    const holeRegion = [];
+                    const stack = [{ x, y }];
+                    let touchesBoundary = false;
+
+                    while (stack.length > 0) {
+                        const p = stack.pop();
+                        const pKey = `${p.x},${p.y}`;
+                        
+                        if (holeVisited.has(pKey)) continue;
+                        if (p.x < minX || p.x > maxX || p.y < minY || p.y > maxY) {
+                            touchesBoundary = true;
+                            continue;
+                        }
+                        
+                        const pIdx = p.y * width + p.x;
+                        if (binary[pIdx] === 1) continue;
+                        if (!regionSet.has(pKey)) {
+                            touchesBoundary = true;
+                            continue;
+                        }
+
+                        holeVisited.add(pKey);
+                        holeRegion.push({ x: p.x, y: p.y });
+
+                        for (const [dx, dy] of directions) {
+                            stack.push({ x: p.x + dx, y: p.y + dy });
+                        }
+                    }
+
+                    if (!touchesBoundary && holeRegion.length >= minArea) {
+                        const holeContour = this.traceHoleContour(holeRegion, binary, width, height);
+                        if (holeContour.length >= 3) {
+                            holes.push(holeContour);
+                        }
+                    }
+                }
+            }
+        }
+
+        return holes;
+    }
+
+    traceOuterContour(region, binary, width, height) {
+        const regionSet = new Set(region.map(p => `${p.x},${p.y}`));
+        const edgeDirections = [[0, -1], [1, 0], [0, 1], [-1, 0]];
         
         let startPoint = null;
+        let minX = width, minY = height;
         for (const p of region) {
-            if (p.y === minY || p.x === minX) {
+            if (p.y < minY || (p.y === minY && p.x < minX)) {
+                minY = p.y;
+                minX = p.x;
                 startPoint = p;
-                break;
             }
         }
         
@@ -254,46 +318,89 @@ class ImageToSVGConverter {
 
         const contour = [startPoint];
         let current = startPoint;
-        let dir = 0;
+        let dir = 1;
         let iterations = 0;
-        const maxIterations = region.length * 4;
+        const maxIterations = region.length * 8;
 
         do {
             let found = false;
-            for (let i = 0; i < 8 && !found; i++) {
-                const testDir = (dir + i + 6) % 8;
+            for (let i = 0; i < 4 && !found; i++) {
+                const testDir = (dir + i + 3) % 4;
                 const [dx, dy] = edgeDirections[testDir];
                 const next = { x: current.x + dx, y: current.y + dy };
                 const nextKey = `${next.x},${next.y}`;
 
                 if (regionSet.has(nextKey)) {
-                    const isEdge = this.isEdgePoint(next, binary, width, height);
-                    if (isEdge) {
-                        contour.push(next);
+                    const backDir = (testDir + 2) % 4;
+                    const [bx, by] = edgeDirections[backDir];
+                    const checkPoint = { x: next.x + bx, y: next.y + by };
+                    const checkKey = `${checkPoint.x},${checkPoint.y}`;
+                    
+                    if (!regionSet.has(checkKey) || checkPoint.x < 0 || checkPoint.x >= width || checkPoint.y < 0 || checkPoint.y >= height) {
+                        if (contour.length < 3 || next.x !== contour[contour.length - 2].x || next.y !== contour[contour.length - 2].y) {
+                            contour.push(next);
+                        }
                         current = next;
                         dir = testDir;
                         found = true;
                     }
                 }
             }
+            if (!found) break;
             iterations++;
         } while (iterations < maxIterations && 
-                 (current.x !== startPoint.x || current.y !== startPoint.y || contour.length < 3) &&
+                 (current.x !== startPoint.x || current.y !== startPoint.y || contour.length < 4) &&
                  contour.length < region.length);
 
         return this.simplifyContour(contour, parseFloat(this.alphamax.value) / 100);
     }
 
-    isEdgePoint(p, binary, width, height) {
-        const directions = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-        for (const [dx, dy] of directions) {
-            const nx = p.x + dx;
-            const ny = p.y + dy;
-            if (nx < 0 || nx >= width || ny < 0 || ny >= height) return true;
-            const nIdx = ny * width + nx;
-            if (binary[nIdx] === 0) return true;
+    traceHoleContour(holeRegion, binary, width, height) {
+        const holeSet = new Set(holeRegion.map(p => `${p.x},${p.y}`));
+        const edgeDirections = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+        
+        let startPoint = null;
+        let minX = width, minY = height;
+        for (const p of holeRegion) {
+            if (p.y < minY || (p.y === minY && p.x < minX)) {
+                minY = p.y;
+                minX = p.x;
+                startPoint = p;
+            }
         }
-        return false;
+        
+        if (!startPoint) return [];
+
+        const contour = [startPoint];
+        let current = startPoint;
+        let dir = 1;
+        let iterations = 0;
+        const maxIterations = holeRegion.length * 8;
+
+        do {
+            let found = false;
+            for (let i = 0; i < 4 && !found; i++) {
+                const testDir = (dir + i + 1) % 4;
+                const [dx, dy] = edgeDirections[testDir];
+                const next = { x: current.x + dx, y: current.y + dy };
+                const nextKey = `${next.x},${next.y}`;
+
+                if (holeSet.has(nextKey)) {
+                    if (contour.length < 3 || next.x !== contour[contour.length - 2].x || next.y !== contour[contour.length - 2].y) {
+                        contour.push(next);
+                    }
+                    current = next;
+                    dir = testDir;
+                    found = true;
+                }
+            }
+            if (!found) break;
+            iterations++;
+        } while (iterations < maxIterations && 
+                 (current.x !== startPoint.x || current.y !== startPoint.y || contour.length < 4) &&
+                 contour.length < holeRegion.length);
+
+        return this.simplifyContour(contour, parseFloat(this.alphamax.value) / 100);
     }
 
     simplifyContour(contour, tolerance) {
@@ -301,7 +408,7 @@ class ImageToSVGConverter {
 
         const simplified = [contour[0]];
         let prev = contour[0];
-        const minDist = Math.max(1, Math.floor(contour.length / 50));
+        const minDist = Math.max(1, Math.floor(contour.length / 80));
 
         for (let i = 1; i < contour.length - 1; i++) {
             const dist = Math.sqrt(
@@ -318,15 +425,21 @@ class ImageToSVGConverter {
         return simplified;
     }
 
-    contoursToSVG(contours, width, height) {
+    contoursToSVGWithFillRule(contours, width, height) {
         let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">\n`;
         svg += '  <rect width="100%" height="100%" fill="white"/>\n';
 
-        for (const contour of contours) {
-            if (contour.length < 3) continue;
+        for (const contourGroup of contours) {
+            if (contourGroup.outer.length < 3) continue;
 
-            const path = this.contourToPath(contour);
-            svg += `  <path d="${path}" fill="black" stroke="none"/>\n`;
+            const outerPath = this.contourToPath(contourGroup.outer);
+            const holePaths = contourGroup.holes.map(h => this.contourToPath(h)).filter(p => p.length > 0);
+
+            if (holePaths.length > 0) {
+                svg += `  <path d="${outerPath} ${holePaths.join(' ')}" fill="black" stroke="none" fill-rule="evenodd"/>\n`;
+            } else {
+                svg += `  <path d="${outerPath}" fill="black" stroke="none"/>\n`;
+            }
         }
 
         svg += '</svg>';
@@ -334,27 +447,22 @@ class ImageToSVGConverter {
     }
 
     contourToPath(contour) {
-        if (contour.length < 2) return '';
+        if (contour.length < 3) return '';
 
         let d = `M ${contour[0].x} ${contour[0].y}`;
         
-        if (this.optcurve.checked && contour.length > 4) {
-            for (let i = 1; i < contour.length - 1; i += 2) {
-                const p0 = contour[i - 1];
+        if (this.optcurve.checked && contour.length > 6) {
+            for (let i = 1; i < contour.length - 2; i += 2) {
                 const p1 = contour[i];
-                const p2 = contour[Math.min(i + 1, contour.length - 1)];
+                const p2 = contour[i + 1];
+                const p3 = contour[Math.min(i + 2, contour.length - 1)];
                 
-                const c1 = {
-                    x: (p0.x + p1.x) / 2,
-                    y: (p0.y + p1.y) / 2
-                };
-                const c2 = {
-                    x: (p1.x + p2.x) / 2,
-                    y: (p1.y + p2.y) / 2
-                };
+                const cx = (p1.x + p2.x) / 2;
+                const cy = (p1.y + p2.y) / 2;
                 
-                d += ` Q ${p1.x} ${p1.y} ${c2.x} ${c2.y}`;
+                d += ` Q ${p2.x} ${p2.y} ${cx} ${cy}`;
             }
+            d += ` L ${contour[contour.length - 1].x} ${contour[contour.length - 1].y}`;
         } else {
             for (let i = 1; i < contour.length; i++) {
                 d += ` L ${contour[i].x} ${contour[i].y}`;
