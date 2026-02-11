@@ -17,6 +17,7 @@ class ImageToSVGConverter {
         this.convertBtn = document.getElementById('convertBtn');
         this.downloadBtn = document.getElementById('downloadBtn');
         this.resetBtn = document.getElementById('resetBtn');
+        this.reuploadBtn = document.getElementById('reuploadBtn');
 
         this.threshold = document.getElementById('threshold');
         this.turnpolicy = document.getElementById('turnpolicy');
@@ -59,6 +60,7 @@ class ImageToSVGConverter {
         this.convertBtn.style.display = 'none';
         this.downloadBtn.addEventListener('click', () => this.downloadSVG());
         this.resetBtn.addEventListener('click', () => this.reset());
+        this.reuploadBtn.addEventListener('click', () => this.fileInput.click());
     }
 
     scheduleConvert() {
