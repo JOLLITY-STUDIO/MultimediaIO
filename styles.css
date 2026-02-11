@@ -44,6 +44,52 @@ main {
     gap: 20px;
 }
 
+.demo-section {
+    background: white;
+    border-radius: 20px;
+    padding: 30px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+}
+
+.demo-section h2 {
+    text-align: center;
+    margin-bottom: 20px;
+    color: #333;
+    font-size: 1.5rem;
+}
+
+.demo-grid {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.demo-item {
+    text-align: center;
+}
+
+.demo-item h4 {
+    margin-bottom: 10px;
+    color: #666;
+    font-size: 0.95rem;
+}
+
+.demo-image {
+    max-width: 250px;
+    max-height: 200px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+.demo-arrow {
+    font-size: 2rem;
+    color: #667eea;
+    font-weight: bold;
+}
+
 .upload-area {
     background: white;
     border-radius: 20px;
@@ -306,6 +352,14 @@ footer a:hover {
 @media (max-width: 768px) {
     header h1 {
         font-size: 1.8rem;
+    }
+
+    .demo-grid {
+        flex-direction: column;
+    }
+
+    .demo-arrow {
+        transform: rotate(90deg);
     }
 
     .preview-area {
