@@ -132,40 +132,63 @@ class ImageToSVGConverter {
 
         const img = new Image();
         img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            
-            const maxSize = 800;
-            let width = img.width;
-            let height = img.height;
-            
-            if (width > maxSize || height > maxSize) {
-                if (width > height) {
-                    height = (height / width) * maxSize;
-                    width = maxSize;
-                } else {
-                    width = (width / height) * maxSize;
-                    height = maxSize;
+            try {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                const maxSize = 800;
+                let width = img.width;
+                let height = img.height;
+                
+                if (width > maxSize || height > maxSize) {
+                    if (width > height) {
+                        height = (height / width) * maxSize;
+                        width = maxSize;
+                    } else {
+                        width = (width / height) * maxSize;
+                        height = maxSize;
+                    }
                 }
+
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+
+                const imageData = ctx.getImageData(0, 0, width, height);
+                const thresholdVal = parseInt(this.threshold.value);
+                const turdSize = parseInt(this.turdsize.value);
+                const invertColors = this.invert.checked;
+
+                console.log('[SVG Convert] Start:', { width, height, thresholdVal, turdSize });
+
+                const binaryImage = this.binarizeImage(imageData, thresholdVal, invertColors);
+                
+                let blackPixels = 0;
+                for (let i = 0; i < binaryImage.length; i++) {
+                    if (binaryImage[i] === 1) blackPixels++;
+                }
+                console.log('[SVG Convert] Binary image:', { blackPixels, whitePixels: binaryImage.length - blackPixels });
+
+                const contours = this.findContoursWithHoles(binaryImage, width, height, turdSize);
+                console.log('[SVG Convert] Contours found:', contours.length);
+
+                const svg = this.contoursToSVGWithFillRule(contours, width, height);
+                console.log('[SVG Convert] SVG generated, length:', svg.length);
+
+                this.svgData = svg;
+                this.displaySVG(svg);
+            } catch (error) {
+                console.error('[SVG Convert] Error:', error);
+                this.svgPreview.innerHTML = `<p style="color: red;">转换出错: ${error.message}</p>`;
+            } finally {
+                this.loading.style.display = 'none';
+                this.downloadBtn.style.display = 'inline-block';
             }
-
-            canvas.width = width;
-            canvas.height = height;
-            ctx.drawImage(img, 0, 0, width, height);
-
-            const imageData = ctx.getImageData(0, 0, width, height);
-            const thresholdVal = parseInt(this.threshold.value);
-            const turdSize = parseInt(this.turdsize.value);
-            const invertColors = this.invert.checked;
-
-            const binaryImage = this.binarizeImage(imageData, thresholdVal, invertColors);
-            const contours = this.findContoursWithHoles(binaryImage, width, height, turdSize);
-            const svg = this.contoursToSVGWithFillRule(contours, width, height);
-
-            this.svgData = svg;
-            this.displaySVG(svg);
+        };
+        img.onerror = (e) => {
+            console.error('[SVG Convert] Image load error:', e);
             this.loading.style.display = 'none';
-            this.downloadBtn.style.display = 'inline-block';
+            this.svgPreview.innerHTML = '<p style="color: red;">图片加载失败</p>';
         };
         img.src = this.originalImage;
     }
