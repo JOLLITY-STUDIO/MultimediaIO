@@ -38,19 +38,38 @@
 
             <div class="controls" id="controls" style="display: none;">
                 <div class="control-group">
-                    <label for="colorThreshold">颜色阈值:</label>
-                    <input type="range" id="colorThreshold" min="1" max="50" value="10">
-                    <span id="colorThresholdValue">10</span>
+                    <label for="threshold">阈值:</label>
+                    <input type="range" id="threshold" min="0" max="255" value="128">
+                    <span id="thresholdValue">128</span>
                 </div>
                 <div class="control-group">
-                    <label for="blurRadius">模糊半径:</label>
-                    <input type="range" id="blurRadius" min="0" max="10" value="0">
-                    <span id="blurRadiusValue">0</span>
+                    <label for="turnpolicy">转角策略:</label>
+                    <select id="turnpolicy">
+                        <option value="black">黑色优先</option>
+                        <option value="white">白色优先</option>
+                        <option value="left">左转优先</option>
+                        <option value="right">右转优先</option>
+                        <option value="minority">少数优先</option>
+                        <option value="majority">多数优先</option>
+                    </select>
                 </div>
                 <div class="control-group">
-                    <label for="simplifyTolerance">简化容差:</label>
-                    <input type="range" id="simplifyTolerance" min="0" max="10" value="2">
-                    <span id="simplifyToleranceValue">2</span>
+                    <label for="turdsize">最小区域:</label>
+                    <input type="range" id="turdsize" min="0" max="100" value="2">
+                    <span id="turdsizeValue">2</span>
+                </div>
+                <div class="control-group">
+                    <label for="alphamax">平滑度:</label>
+                    <input type="range" id="alphamax" min="0" max="100" value="33">
+                    <span id="alphamaxValue">0.33</span>
+                </div>
+                <div class="control-group">
+                    <label for="optcurve">优化曲线:</label>
+                    <input type="checkbox" id="optcurve" checked>
+                </div>
+                <div class="control-group">
+                    <label for="invert">反转颜色:</label>
+                    <input type="checkbox" id="invert">
                 </div>
                 <div class="button-group">
                     <button id="convertBtn" class="btn btn-primary">转换为 SVG</button>
@@ -70,6 +89,7 @@
         </footer>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/potrace@2.1.8/dist/potrace.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

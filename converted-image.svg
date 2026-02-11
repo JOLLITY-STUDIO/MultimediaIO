@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500">
+  <rect width="100%" height="100%" fill="white"/>
+  <polygon points="0,0 498,0 498,498 0,498" fill="#ffffff" stroke="none"/>
+  <polygon points="84,279 87,144 93,132 105,120 159,75 219,36 225,33 234,30 258,30 267,33 273,36 330,78 342,90 348,102 429,279 432,288 432,309 429,318 423,330 321,432 309,441 291,450 282,453 270,456 177,456 162,453 147,447 141,444 132,438 120,429 114,423 102,408 90,384 87,375 84,363" fill="#fefefd" stroke="none"/>
+  <polygon points="285,42 291,48 294,54 294,60 285,45" fill="#010104" stroke="none"/>
+  <polygon points="183,63 198,54 198,60 195,63" fill="#070706" stroke="none"/>
+  <polygon points="225,75 231,63 234,60 243,57 249,57 261,63 264,69 264,228 225,228" fill="#020301" stroke="none"/>
+  <polygon points="300,66 309,66 303,69 300,69" fill="#686768" stroke="none"/>
+  <polygon points="147,81 153,75 156,75 147,84" fill="#252626" stroke="none"/>
+  <polygon points="333,78 336,78 342,84 342,87" fill="#020202" stroke="none"/>
+  <polygon points="171,105 177,99 183,96 198,96 207,105 210,111 210,228 171,228" fill="#040501" stroke="none"/>
+  <polygon points="123,108 138,99 138,108" fill="#000101" stroke="none"/>
+  <polygon points="282,111 291,102 297,99 306,99 312,102 321,111 321,249 282,231" fill="#060608" stroke="none"/>
+  <polygon points="354,111 360,258 357,261 354,261" fill="#000000" stroke="none"/>
+  <polygon points="90,129 102,117 105,117 90,132" fill="#1e1e1e" stroke="none"/>
+  <polygon points="81,153 84,141 87,135 87,141 84,378 81,366" fill="#020201" stroke="none"/>
+  <polygon points="114,156 117,150 126,141 141,141 147,144 153,150 153,228 147,231 114,246" fill="#20201f" stroke="none"/>
+  <polygon points="114,279 117,267 120,261 129,252 135,249 147,246 288,246 297,249 393,282 402,291 402,306 399,312 297,414 288,420 270,426 177,426 165,423 147,414 129,396 123,387 117,375 114,360" fill="#030501" stroke="none"/>
+  <polygon points="369,252 378,249 396,249 405,252" fill="#060506" stroke="none"/>
+  <polygon points="414,258 417,258 426,267 426,270" fill="#000102" stroke="none"/>
+  <polygon points="330,426 423,333 423,336 333,426" fill="#020202" stroke="none"/>
+  <polygon points="87,381 90,387 90,393 87,387" fill="#0c0c0d" stroke="none"/>
+  <polygon points="153,453 294,450 300,450 294,453 285,456 273,459 171,459 159,456" fill="#313231" stroke="none"/>
+</svg>

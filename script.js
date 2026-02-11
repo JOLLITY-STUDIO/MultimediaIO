@@ -17,13 +17,16 @@ class ImageToSVGConverter {
         this.downloadBtn = document.getElementById('downloadBtn');
         this.resetBtn = document.getElementById('resetBtn');
 
-        this.colorThreshold = document.getElementById('colorThreshold');
-        this.blurRadius = document.getElementById('blurRadius');
-        this.simplifyTolerance = document.getElementById('simplifyTolerance');
+        this.threshold = document.getElementById('threshold');
+        this.turnpolicy = document.getElementById('turnpolicy');
+        this.turdsize = document.getElementById('turdsize');
+        this.alphamax = document.getElementById('alphamax');
+        this.optcurve = document.getElementById('optcurve');
+        this.invert = document.getElementById('invert');
 
-        this.colorThresholdValue = document.getElementById('colorThresholdValue');
-        this.blurRadiusValue = document.getElementById('blurRadiusValue');
-        this.simplifyToleranceValue = document.getElementById('simplifyToleranceValue');
+        this.thresholdValue = document.getElementById('thresholdValue');
+        this.turdsizeValue = document.getElementById('turdsizeValue');
+        this.alphamaxValue = document.getElementById('alphamaxValue');
 
         this.bindEvents();
     }
@@ -36,14 +39,14 @@ class ImageToSVGConverter {
         this.uploadArea.addEventListener('dragleave', (e) => this.handleDragLeave(e));
         this.uploadArea.addEventListener('drop', (e) => this.handleDrop(e));
 
-        this.colorThreshold.addEventListener('input', (e) => {
-            this.colorThresholdValue.textContent = e.target.value;
+        this.threshold.addEventListener('input', (e) => {
+            this.thresholdValue.textContent = e.target.value;
         });
-        this.blurRadius.addEventListener('input', (e) => {
-            this.blurRadiusValue.textContent = e.target.value;
+        this.turdsize.addEventListener('input', (e) => {
+            this.turdsizeValue.textContent = e.target.value;
         });
-        this.simplifyTolerance.addEventListener('input', (e) => {
-            this.simplifyToleranceValue.textContent = e.target.value;
+        this.alphamax.addEventListener('input', (e) => {
+            this.alphamaxValue.textContent = (e.target.value / 100).toFixed(2);
         });
 
         this.convertBtn.addEventListener('click', () => this.convertToSVG());
@@ -106,18 +109,12 @@ class ImageToSVGConverter {
         this.loading.style.display = 'block';
         this.convertBtn.disabled = true;
 
-        setTimeout(() => {
-            this.performConversion();
-        }, 100);
-    }
-
-    performConversion() {
         const img = new Image();
         img.onload = () => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             
-            const maxSize = 500;
+            const maxSize = 800;
             let width = img.width;
             let height = img.height;
             
@@ -133,148 +130,146 @@ class ImageToSVGConverter {
 
             canvas.width = width;
             canvas.height = height;
-
-            const blur = parseInt(this.blurRadius.value);
-            if (blur > 0) {
-                ctx.filter = `blur(${blur}px)`;
-            }
-            
             ctx.drawImage(img, 0, 0, width, height);
-            ctx.filter = 'none';
 
             const imageData = ctx.getImageData(0, 0, width, height);
-            const svg = this.imageDataToSVG(imageData, width, height);
             
-            this.svgData = svg;
-            this.displaySVG(svg);
-            
-            this.loading.style.display = 'none';
-            this.convertBtn.disabled = false;
-            this.downloadBtn.style.display = 'inline-block';
+            if (this.invert.checked) {
+                for (let i = 0; i < imageData.data.length; i += 4) {
+                    imageData.data[i] = 255 - imageData.data[i];
+                    imageData.data[i + 1] = 255 - imageData.data[i + 1];
+                    imageData.data[i + 2] = 255 - imageData.data[i + 2];
+                }
+            }
+
+            const options = {
+                threshold: parseInt(this.threshold.value),
+                turnPolicy: this.turnpolicy.value,
+                turdSize: parseInt(this.turdsize.value),
+                alphaMax: parseFloat(this.alphamax.value) / 100,
+                optCurve: this.optcurve.checked,
+                optTolerance: 0.2,
+                background: '#ffffff',
+                color: '#000000'
+            };
+
+            try {
+                if (typeof Potrace !== 'undefined') {
+                    Potrace.trace(imageData, options, (err, svg) => {
+                        if (err) {
+                            console.error('Potrace error:', err);
+                            this.convertToSVGCanvas(ctx, canvas, width, height);
+                            return;
+                        }
+                        this.svgData = svg;
+                        this.displaySVG(svg);
+                        this.loading.style.display = 'none';
+                        this.convertBtn.disabled = false;
+                        this.downloadBtn.style.display = 'inline-block';
+                    });
+                } else {
+                    this.convertToSVGCanvas(ctx, canvas, width, height);
+                }
+            } catch (error) {
+                console.error('Conversion error:', error);
+                this.convertToSVGCanvas(ctx, canvas, width, height);
+            }
         };
         img.src = this.originalImage;
     }
 
-    imageDataToSVG(imageData, width, height) {
-        const threshold = parseInt(this.colorThreshold.value);
-        const tolerance = parseInt(this.simplifyTolerance.value);
+    convertToSVGCanvas(ctx, canvas, width, height) {
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const data = imageData.data;
         
-        const regions = this.extractColorRegions(imageData, width, height, threshold);
-        const simplifiedRegions = this.simplifyRegions(regions, tolerance);
+        const edgePoints = this.detectEdges(data, width, height);
+        const paths = this.tracePaths(edgePoints, width, height);
         
         let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">\n`;
         svg += '  <rect width="100%" height="100%" fill="white"/>\n';
         
-        for (const region of simplifiedRegions) {
-            if (region.points && region.points.length > 0) {
-                const points = region.points.map(p => `${p.x},${p.y}`).join(' ');
-                svg += `  <polygon points="${points}" fill="${region.color}" stroke="none"/>\n`;
+        for (const path of paths) {
+            if (path.length > 2) {
+                const simplified = this.simplifyPath(path, 1);
+                const d = this.pathToSVG(simplified);
+                svg += `  <path d="${d}" fill="black" stroke="none"/>\n`;
             }
         }
         
         svg += '</svg>';
-        return svg;
-    }
-
-    extractColorRegions(imageData, width, height, threshold) {
-        const regions = [];
-        const visited = new Set();
-        const data = imageData.data;
-
-        const getPixelIndex = (x, y) => (y * width + x) * 4;
-        const getColor = (x, y) => {
-            const i = getPixelIndex(x, y);
-            return { r: data[i], g: data[i+1], b: data[i+2], a: data[i+3] };
-        };
-        const colorDistance = (c1, c2) => {
-            return Math.sqrt(
-                Math.pow(c1.r - c2.r, 2) +
-                Math.pow(c1.g - c2.g, 2) +
-                Math.pow(c1.b - c2.b, 2)
-            );
-        };
-        const colorToHex = (c) => {
-            return `#${this.toHex(c.r)}${this.toHex(c.g)}${this.toHex(c.b)}`;
-        };
-
-        for (let y = 0; y < height; y += 3) {
-            for (let x = 0; x < width; x += 3) {
-                const key = `${x},${y}`;
-                if (visited.has(key)) continue;
-
-                const color = getColor(x, y);
-                if (color.a < 128) continue;
-
-                const region = { color: colorToHex(color), points: [] };
-                const stack = [{ x, y }];
-
-                while (stack.length > 0) {
-                    const p = stack.pop();
-                    const pKey = `${p.x},${p.y}`;
-                    if (visited.has(pKey)) continue;
-                    if (p.x < 0 || p.x >= width || p.y < 0 || p.y >= height) continue;
-
-                    const pColor = getColor(p.x, p.y);
-                    if (colorDistance(color, pColor) > threshold * 5) continue;
-
-                    visited.add(pKey);
-                    region.points.push({ x: p.x, y: p.y });
-
-                    stack.push({ x: p.x + 3, y: p.y });
-                    stack.push({ x: p.x - 3, y: p.y });
-                    stack.push({ x: p.x, y: p.y + 3 });
-                    stack.push({ x: p.x, y: p.y - 3 });
-                }
-
-                if (region.points.length > 5) {
-                    regions.push(region);
-                }
-            }
-        }
-
-        return regions;
-    }
-
-    simplifyRegions(regions, tolerance) {
-        return regions.map(region => {
-            if (region.points.length < 3) return region;
-
-            const hull = this.convexHull(region.points);
-            const simplified = this.simplifyPath(hull, tolerance);
-            
-            return { ...region, points: simplified };
-        }).filter(r => r.points && r.points.length >= 3);
-    }
-
-    convexHull(points) {
-        if (points.length < 3) return points;
-
-        const sorted = [...points].sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
         
-        const cross = (o, a, b) => {
-            return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-        };
+        this.svgData = svg;
+        this.displaySVG(svg);
+        this.loading.style.display = 'none';
+        this.convertBtn.disabled = false;
+        this.downloadBtn.style.display = 'inline-block';
+    }
 
-        const lower = [];
-        for (const p of sorted) {
-            while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
-                lower.pop();
+    detectEdges(data, width, height) {
+        const edges = new Set();
+        const threshold = parseInt(this.threshold.value);
+        
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                const i = (y * width + x) * 4;
+                const gray = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                
+                const right = ((y * width + x + 1) * 4);
+                const grayRight = (data[right] + data[right + 1] + data[right + 2]) / 3;
+                
+                const bottom = (((y + 1) * width + x) * 4);
+                const grayBottom = (data[bottom] + data[bottom + 1] + data[bottom + 2]) / 3;
+                
+                if (Math.abs(gray - grayRight) > threshold || Math.abs(gray - grayBottom) > threshold) {
+                    if (gray < threshold) {
+                        edges.add(`${x},${y}`);
+                    }
+                }
             }
-            lower.push(p);
         }
+        
+        return edges;
+    }
 
-        const upper = [];
-        for (let i = sorted.length - 1; i >= 0; i--) {
-            const p = sorted[i];
-            while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
-                upper.pop();
+    tracePaths(edges, width, height) {
+        const paths = [];
+        const visited = new Set();
+        const directions = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]];
+        
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const key = `${x},${y}`;
+                if (edges.has(key) && !visited.has(key)) {
+                    const path = [];
+                    const stack = [{ x, y }];
+                    
+                    while (stack.length > 0) {
+                        const p = stack.pop();
+                        const pKey = `${p.x},${p.y}`;
+                        if (visited.has(pKey)) continue;
+                        if (!edges.has(pKey)) continue;
+                        
+                        visited.add(pKey);
+                        path.push({ x: p.x, y: p.y });
+                        
+                        for (const [dx, dy] of directions) {
+                            const nx = p.x + dx;
+                            const ny = p.y + dy;
+                            const nKey = `${nx},${ny}`;
+                            if (!visited.has(nKey) && edges.has(nKey)) {
+                                stack.push({ x: nx, y: ny });
+                            }
+                        }
+                    }
+                    
+                    if (path.length > 5) {
+                        paths.push(path);
+                    }
+                }
             }
-            upper.push(p);
         }
-
-        lower.pop();
-        upper.pop();
-        return lower.concat(upper);
+        
+        return paths;
     }
 
     simplifyPath(points, tolerance) {
@@ -298,9 +293,17 @@ class ImageToSVGConverter {
         return result;
     }
 
-    toHex(n) {
-        const hex = Math.round(n).toString(16);
-        return hex.length === 1 ? '0' + hex : hex;
+    pathToSVG(points) {
+        if (points.length < 2) return '';
+        
+        let d = `M ${points[0].x} ${points[0].y}`;
+        
+        for (let i = 1; i < points.length; i++) {
+            d += ` L ${points[i].x} ${points[i].y}`;
+        }
+        
+        d += ' Z';
+        return d;
     }
 
     displaySVG(svg) {
