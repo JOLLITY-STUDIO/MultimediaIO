@@ -2,6 +2,7 @@ class ImageToSVGConverter {
     constructor() {
         this.originalImage = null;
         this.svgData = null;
+        this.convertTimeout = null;
         this.init();
     }
 
@@ -41,17 +42,33 @@ class ImageToSVGConverter {
 
         this.threshold.addEventListener('input', (e) => {
             this.thresholdValue.textContent = e.target.value;
+            this.scheduleConvert();
         });
         this.turdsize.addEventListener('input', (e) => {
             this.turdsizeValue.textContent = e.target.value;
+            this.scheduleConvert();
         });
         this.alphamax.addEventListener('input', (e) => {
             this.alphamaxValue.textContent = (e.target.value / 100).toFixed(2);
+            this.scheduleConvert();
         });
+        this.turnpolicy.addEventListener('change', () => this.scheduleConvert());
+        this.optcurve.addEventListener('change', () => this.scheduleConvert());
+        this.invert.addEventListener('change', () => this.scheduleConvert());
 
-        this.convertBtn.addEventListener('click', () => this.convertToSVG());
+        this.convertBtn.style.display = 'none';
         this.downloadBtn.addEventListener('click', () => this.downloadSVG());
         this.resetBtn.addEventListener('click', () => this.reset());
+    }
+
+    scheduleConvert() {
+        if (!this.originalImage) return;
+        if (this.convertTimeout) {
+            clearTimeout(this.convertTimeout);
+        }
+        this.convertTimeout = setTimeout(() => {
+            this.convertToSVG();
+        }, 300);
     }
 
     handleDragOver(e) {
@@ -100,7 +117,10 @@ class ImageToSVGConverter {
         this.previewArea.style.display = 'grid';
         this.controls.style.display = 'block';
         this.downloadBtn.style.display = 'none';
-        this.svgPreview.innerHTML = '<p style="color: #999;">点击"转换为 SVG"按钮开始转换</p>';
+        this.svgPreview.innerHTML = '<p style="color: #999;">正在转换中...</p>';
+        setTimeout(() => {
+            this.convertToSVG();
+        }, 100);
     }
 
     convertToSVG() {
