@@ -341,22 +341,50 @@ class ImageToSVGConverter {
     }
 
     simplifyContour(contour) {
-        if (contour.length <= 20) return contour;
+        if (contour.length <= 10) return contour;
+        return this.ramerDouglasPeucker(contour, 1.5);
+    }
 
-        const simplified = [];
-        const step = Math.max(1, Math.floor(contour.length / 100));
+    ramerDouglasPeucker(points, epsilon) {
+        if (points.length <= 2) return points;
 
-        for (let i = 0; i < contour.length; i += step) {
-            simplified.push(contour[i]);
+        let maxDist = 0;
+        let maxIndex = 0;
+        const start = points[0];
+        const end = points[points.length - 1];
+
+        for (let i = 1; i < points.length - 1; i++) {
+            const dist = this.perpendicularDistance(points[i], start, end);
+            if (dist > maxDist) {
+                maxDist = dist;
+                maxIndex = i;
+            }
         }
 
-        if (simplified.length > 0 && 
-            (simplified[simplified.length - 1].x !== contour[0].x || 
-             simplified[simplified.length - 1].y !== contour[0].y)) {
-            simplified.push(contour[contour.length - 1]);
+        if (maxDist > epsilon) {
+            const left = this.ramerDouglasPeucker(points.slice(0, maxIndex + 1), epsilon);
+            const right = this.ramerDouglasPeucker(points.slice(maxIndex), epsilon);
+            return left.slice(0, -1).concat(right);
         }
 
-        return simplified;
+        return [start, end];
+    }
+
+    perpendicularDistance(point, lineStart, lineEnd) {
+        const dx = lineEnd.x - lineStart.x;
+        const dy = lineEnd.y - lineStart.y;
+
+        if (dx === 0 && dy === 0) {
+            return Math.sqrt((point.x - lineStart.x) ** 2 + (point.y - lineStart.y) ** 2);
+        }
+
+        const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / (dx * dx + dy * dy);
+        const clampedT = Math.max(0, Math.min(1, t));
+
+        const closestX = lineStart.x + clampedT * dx;
+        const closestY = lineStart.y + clampedT * dy;
+
+        return Math.sqrt((point.x - closestX) ** 2 + (point.y - closestY) ** 2);
     }
 
     contoursToSVG(contours, width, height) {
@@ -379,17 +407,8 @@ class ImageToSVGConverter {
 
         let d = `M ${contour[0].x} ${contour[0].y}`;
         
-        if (this.optcurve.checked && contour.length > 6) {
-            for (let i = 1; i < contour.length - 2; i += 2) {
-                const p1 = contour[i];
-                const p2 = contour[i + 1];
-                
-                const cx = (p1.x + p2.x) / 2;
-                const cy = (p1.y + p2.y) / 2;
-                
-                d += ` Q ${p1.x} ${p1.y} ${cx} ${cy}`;
-            }
-            d += ` L ${contour[contour.length - 1].x} ${contour[contour.length - 1].y}`;
+        if (this.optcurve.checked && contour.length > 4) {
+            d += this.fitBezierCurve(contour);
         } else {
             for (let i = 1; i < contour.length; i++) {
                 d += ` L ${contour[i].x} ${contour[i].y}`;
@@ -398,6 +417,60 @@ class ImageToSVGConverter {
 
         d += ' Z';
         return d;
+    }
+
+    fitBezierCurve(points) {
+        if (points.length < 4) {
+            let d = '';
+            for (let i = 1; i < points.length; i++) {
+                d += ` L ${points[i].x} ${points[i].y}`;
+            }
+            return d;
+        }
+
+        let d = '';
+        const n = points.length;
+        const alphaMax = parseFloat(this.alphamax.value) / 100;
+
+        for (let i = 0; i < n - 1; i++) {
+            const curr = points[i];
+            const next = points[(i + 1) % n];
+            const prev = points[(i - 1 + n) % n];
+            const nextNext = points[(i + 2) % n];
+
+            const corner = this.calculateCorner(prev, curr, next);
+            const isCorner = corner > alphaMax;
+
+            if (isCorner || i === n - 2) {
+                d += ` L ${next.x} ${next.y}`;
+            } else {
+                const ctrl1 = this.calculateControlPoint(prev, curr, next, 0.3);
+                const ctrl2 = this.calculateControlPoint(curr, next, nextNext, 0.3);
+                d += ` C ${ctrl1.x} ${ctrl1.y} ${ctrl2.x} ${ctrl2.y} ${next.x} ${next.y}`;
+            }
+        }
+
+        return d;
+    }
+
+    calculateCorner(a, b, c) {
+        const v1 = { x: a.x - b.x, y: a.y - b.y };
+        const v2 = { x: c.x - b.x, y: c.y - b.y };
+        const dot = v1.x * v2.x + v1.y * v2.y;
+        const mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+        const mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+        if (mag1 === 0 || mag2 === 0) return 0;
+        const cosAngle = dot / (mag1 * mag2);
+        return Math.acos(Math.max(-1, Math.min(1, cosAngle)));
+    }
+
+    calculateControlPoint(a, b, c, tension) {
+        const dx = c.x - a.x;
+        const dy = c.y - a.y;
+        return {
+            x: b.x + dx * tension,
+            y: b.y + dy * tension
+        };
     }
 
     displaySVG(svg) {
